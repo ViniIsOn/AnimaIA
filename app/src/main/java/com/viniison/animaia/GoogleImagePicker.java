@@ -7,7 +7,6 @@ import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.net.Uri;
-import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageView;
@@ -21,67 +20,64 @@ import java.net.URLEncoder;
 final class GoogleImagePicker {
     interface Imported { void onImported(String detail); }
 
-    static void show(Activity activity,SharedPreferences prefs,SpriteStore store,
-                     int slot,Imported callback) {
+    // Commons is a live in-app search; Google is opened in the browser.
+    static void show(Activity activity, SharedPreferences prefs, SpriteStore store,
+                     int slot, Imported callback) {
         LinearLayout box=UiKit.vertical(activity);
         box.setPadding(UiKit.dp(activity,16),UiKit.dp(activity,14),
                        UiKit.dp(activity,16),UiKit.dp(activity,14));
         box.setBackgroundColor(UiKit.BG);
-        UiKit.add(box,UiKit.label(activity,"🔎 Sprites no Google",20,true),0);
-        UiKit.add(box,UiKit.muted(activity,"Escolha imagens que você tenha permissão de utilizar. "
-                +"Prefira PNG com fundo transparente.",12),8);
-        EditText query=UiKit.input(activity,"Ex.: pixel art sprite de dragão");
-        UiKit.add(box,query,14);
-        Button go=UiKit.button(activity,"Buscar imagens",true);
-        UiKit.add(box,go,10);
-        Button browser=UiKit.button(activity,"Abrir Google Imagens no navegador",false);
+        UiKit.add(box,UiKit.label(activity,"🔎 Encontrar imagens",20,true),0);
+        UiKit.add(box,UiKit.muted(activity,
+                "A busca interna usa Wikimedia Commons, sem chave. "
+                +"Para franquias de jogos, use Google Imagens no navegador e importe "
+                +"arquivos que você tenha autorização para utilizar.",12),8);
+        EditText query=UiKit.input(activity,"Ex.: pixel art sprite transparent");
+        UiKit.add(box,query,13);
+        Button go=UiKit.button(activity,"🌍 Buscar grátis (Wikimedia Commons)",true);
+        UiKit.add(box,go,9);
+        Button browser=UiKit.button(activity,"🌐 Abrir Google Imagens",false);
         UiKit.add(box,browser,8);
-        TextView note=UiKit.muted(activity,"Busca integrada: requer Google Programmable Search "
-                +"(API key + Search Engine ID nas configurações).",12);
+        TextView note=UiKit.muted(activity,
+                "Os resultados podem não ser sprites. Confira licença e atribuição antes de publicar.",12);
         UiKit.add(box,note,8);
         LinearLayout results=UiKit.vertical(activity);
-        ScrollView scroll=new ScrollView(activity);
-        scroll.addView(results);
-        LinearLayout.LayoutParams scrollParams=new LinearLayout.LayoutParams(-1,UiKit.dp(activity,370));
-        scrollParams.topMargin=UiKit.dp(activity,10);
-        box.addView(scroll,scrollParams);
+        ScrollView scroller=new ScrollView(activity);
+        scroller.addView(results);
+        LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,UiKit.dp(activity,345));
+        sp.topMargin=UiKit.dp(activity,10);box.addView(scroller,sp);
         AlertDialog dialog=new AlertDialog.Builder(activity)
-                .setView(box).setNegativeButton("Fechar",(d,which)->{}).create();
+                .setView(box).setNegativeButton("Fechar",(d,w)->{}).create();
         dialog.show();
+
         browser.setOnClickListener(v -> {
             try {
                 String url="https://www.google.com/search?tbm=isch&safe=active&q="
                     +URLEncoder.encode(query.getText().toString()+" sprite png","UTF-8");
-                activity.startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(url)));
-            }catch(Exception e) {note.setText("Não foi possível abrir o navegador.");}
+                activity.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+            } catch(Exception e){note.setText("Não foi possível abrir o navegador.");}
         });
+
         go.setOnClickListener(v -> {
             String q=query.getText().toString().trim();
-            if(q.isEmpty()) {note.setText("Digite o personagem que deseja procurar.");return;}
-            String key=prefs.getString("google_key","");
-            String cx=prefs.getString("google_cx","");
-            if(key.isEmpty()||cx.isEmpty()) {
-                note.setText("Para ver resultados aqui, primeiro configure API key e Search Engine ID."
-                    +" O botão abaixo abre a pesquisa normal no navegador.");
-                return;
-            }
-            go.setEnabled(false);
-            results.removeAllViews();
-            note.setText("Pesquisando no Google...");
+            if(q.isEmpty()){note.setText("Digite o personagem ou objeto procurado.");return;}
+            results.removeAllViews();go.setEnabled(false);
+            note.setText("Buscando imagens na Wikimedia Commons...");
             new Thread(() -> {
                 try {
-                    java.util.ArrayList<GoogleImages.Result> images=GoogleImages.search(key,cx,q);
+                    java.util.ArrayList<CommonsImages.Result> list=CommonsImages.search(q);
                     activity.runOnUiThread(() -> {
                         go.setEnabled(true);
-                        note.setText(images.isEmpty()?"Nenhuma imagem encontrada. Tente outra busca."
-                                    :images.size()+" resultados — toque em Usar sprite.");
-                        for(GoogleImages.Result image:images)
-                            addResult(activity,results,image,slot,store,note,dialog,callback);
+                        note.setText(list.isEmpty()
+                            ?"Sem resultados compatíveis. Pesquise outro termo ou importe da galeria."
+                            :list.size()+" imagens. Confira a licença antes de usar.");
+                        for(CommonsImages.Result result:list)
+                            addResult(activity,results,result,slot,store,note,dialog,callback);
                     });
-                } catch(Exception error) {
+                }catch(Exception e){
                     activity.runOnUiThread(() -> {
                         go.setEnabled(true);
-                        note.setText("Erro: "+error.getMessage());
+                        note.setText("Falha na busca: "+e.getMessage());
                     });
                 }
             }).start();
@@ -89,50 +85,63 @@ final class GoogleImagePicker {
     }
 
     private static void addResult(Activity activity,LinearLayout list,
-                                  GoogleImages.Result result,int slot,SpriteStore store,
-                                  TextView status,AlertDialog dialog,Imported callback) {
+                  CommonsImages.Result result,int slot,SpriteStore store,TextView status,
+                  AlertDialog dialog, Imported callback) {
         LinearLayout row=UiKit.horizontal(activity);
-        row.setPadding(UiKit.dp(activity,6),UiKit.dp(activity,12),
-                       UiKit.dp(activity,6),UiKit.dp(activity,12));
+        row.setPadding(0,UiKit.dp(activity,8),0,UiKit.dp(activity,8));
         ImageView thumb=new ImageView(activity);
         thumb.setScaleType(ImageView.ScaleType.FIT_CENTER);
         thumb.setBackground(UiKit.shape(UiKit.CARD,10,activity));
         row.addView(thumb,new LinearLayout.LayoutParams(
-                UiKit.dp(activity,74),UiKit.dp(activity,74)));
-        LinearLayout text=UiKit.vertical(activity);
-        text.setPadding(UiKit.dp(activity,10),0,0,0);
-        TextView title=UiKit.label(activity,result.title,12,true);
-        title.setMaxLines(2);UiKit.add(text,title,0);
-        UiKit.add(text,UiKit.muted(activity,result.source,11),4);
-        Button choose=UiKit.button(activity,"Usar sprite",true);
-        UiKit.add(text,choose,6);
-        row.addView(text,new LinearLayout.LayoutParams(0,-2,1));
-        UiKit.add(list,row,4);
+                UiKit.dp(activity,76),UiKit.dp(activity,76)));
+        LinearLayout description=UiKit.vertical(activity);
+        description.setPadding(UiKit.dp(activity,9),0,0,0);
+        TextView name=UiKit.label(activity,result.title.replace("File:",""),12,true);
+        name.setMaxLines(2);
+        UiKit.add(description,name,0);
+        UiKit.add(description,UiKit.muted(activity,"Licença: "+result.license,11),3);
+        LinearLayout buttons=UiKit.horizontal(activity);
+        Button choose=UiKit.button(activity,"Importar",true);
+        Button source=UiKit.button(activity,"Fonte",false);
+        UiKit.addWeighted(buttons,choose,1,0);
+        UiKit.addWeighted(buttons,source,1,5);
+        UiKit.add(description,buttons,4);
+        row.addView(description,new LinearLayout.LayoutParams(0,-2,1));
+        UiKit.add(list,row,3);
+
+        source.setOnClickListener(v -> {
+            if(result.pageUrl.startsWith("https://"))
+                activity.startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(result.pageUrl)));
+        });
         new Thread(() -> {
             HttpURLConnection connection=null;
-            try {
-                if(!result.thumbnailUrl.startsWith("https://"))return;
-                connection=(HttpURLConnection)new URL(result.thumbnailUrl).openConnection();
-                connection.setConnectTimeout(7000);connection.setReadTimeout(8000);
+            try{
+                connection=(HttpURLConnection)new URL(result.previewUrl).openConnection();
+                connection.setRequestProperty("User-Agent","AnimaIA/0.2 (https://github.com/ViniIsOn/AnimaIA)");
+                connection.setConnectTimeout(6000);connection.setReadTimeout(9000);
                 if(connection.getResponseCode()!=200)return;
-                Bitmap bitmap=BitmapFactory.decodeStream(connection.getInputStream());
-                if(bitmap!=null)activity.runOnUiThread(() -> thumb.setImageBitmap(bitmap));
+                try(java.io.InputStream input=connection.getInputStream()){
+                    Bitmap bitmap=BitmapFactory.decodeStream(input);
+                    if(bitmap!=null)
+                        activity.runOnUiThread(() -> {if(dialog.isShowing())thumb.setImageBitmap(bitmap);});
+                }
             }catch(Exception ignored){}finally{if(connection!=null)connection.disconnect();}
         }).start();
+
         choose.setOnClickListener(v -> {
             choose.setEnabled(false);status.setText("Importando imagem...");
             new Thread(() -> {
-                try {
+                try{
                     store.importFromHttps(slot,result.imageUrl);
                     activity.runOnUiThread(() -> {
-                        callback.onImported("Sprite salvo em "+SpriteStore.SLOTS[slot]+".");
+                        callback.onImported("Imagem importada em "+SpriteStore.SLOTS[slot]+
+                                ". Verifique os créditos: "+result.license);
                         dialog.dismiss();
                     });
-                }catch(Exception e) {
+                }catch(Exception e){
                     activity.runOnUiThread(() -> {
                         choose.setEnabled(true);
-                        status.setText("Falha ao baixar: "+e.getMessage()
-                            +". Abra a fonte no navegador e importe o PNG manualmente.");
+                        status.setText("Falha na importação: "+e.getMessage());
                     });
                 }
             }).start();
