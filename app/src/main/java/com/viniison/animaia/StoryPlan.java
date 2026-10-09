@@ -69,27 +69,67 @@ public final class StoryPlan {
         return text.length() > max ? text.substring(0, max) : text;
     }
 
-    public static StoryPlan offline(String prompt, int seconds) {
-        String input = prompt == null ? "" : prompt.trim();
-        if (input.isEmpty()) input = "Uma aventura inesperada";
-        String lower = input.toLowerCase(Locale.ROOT);
-        String action = "run";
-        if (lower.contains("pula") || lower.contains("salta")) action = "jump";
-        else if (lower.contains("voa") || lower.contains("voando")) action = "fly";
-        else if (lower.contains("danç")) action = "dance";
-        else if (lower.contains("luta") || lower.contains("batalha")) action = "battle";
-        else if (lower.contains("conversa") || lower.contains("fala")) action = "talk";
-        else if (lower.contains("persegue") || lower.contains("foge")) action = "chase";
+    /**
+     * Roteiro local baseado em palavras-chave e variações determinísticas.
+     * Não confundir com texto gerado por modelo de IA.
+     */
+    public static StoryPlan offline(String prompt,int seconds) {
+        String input=prompt==null?"":prompt.trim();
+        if(input.isEmpty()) input="Uma aventura inesperada";
+        String lower=input.toLowerCase(Locale.ROOT);
+        int variety=Math.floorMod(input.hashCode(),4);
+        String action="run";
+        if(contains(lower,"pula","salta","plataforma")) action="jump";
+        else if(contains(lower,"voa","voando","avião","pássaro")) action="fly";
+        else if(contains(lower,"danç","música","festa")) action="dance";
+        else if(contains(lower,"luta","batalha","boss","chefe")) action="battle";
+        else if(contains(lower,"conversa","fala","encontra","descobre")) action="talk";
+        else if(contains(lower,"persegue","foge","caça","corrida")) action="chase";
+        String bg=contains(lower,"espaço","lua","planeta","galáxia")?"space":
+                  contains(lower,"praia","mar","oceano","areia")?"beach":
+                  contains(lower,"floresta","natureza","selva","árvore")?"forest":
+                  contains(lower,"noite","escuro","assombra")?"night":
+                  contains(lower,"sol","deserto","entardecer")?"sunset":"city";
+        String[] openings={
+            "Capítulo 1: "+input,
+            "Tudo começou quando... "+input,
+            "Uma nova aventura: "+input,
+            "Hoje aconteceu algo inesperado: "+input
+        };
+        String[] twists={
+            "Mas um desafio inesperado surge!",
+            "Um rival aparece no pior momento!",
+            "O caminho muda de repente!",
+            "É hora de enfrentar um obstáculo!"
+        };
+        String[] endings={
+            "Uma surpresa muda o final. Continua?",
+            "Missão concluída... por enquanto!",
+            "Essa aventura ainda não terminou!",
+            "Fim do episódio. O que vem depois?"
+        };
+        StoryPlan story=new StoryPlan(seconds,"Sua história pixel art",false);
+        story.scenes.add(new Scene(bg,"idle",limit(openings[variety],96)));
+        story.scenes.add(new Scene(bg,action,limit("A aventura começa: "+input,96)));
+        if(variety==1){
+            story.scenes.add(new Scene("sunset","jump",twists[variety]));
+            story.scenes.add(new Scene(bg,"battle","Chegou a hora de reagir!"));
+        } else if(variety==2) {
+            story.scenes.add(new Scene("forest","fly",twists[variety]));
+            story.scenes.add(new Scene(bg,"chase","A busca continua em alta velocidade!"));
+        } else if(variety==3){
+            story.scenes.add(new Scene("night","chase",twists[variety]));
+            story.scenes.add(new Scene("sunset","talk","Uma descoberta inesperada muda tudo!"));
+        } else{
+            story.scenes.add(new Scene(bg,"chase",twists[variety]));
+            story.scenes.add(new Scene("sunset","jump","O herói encontra uma saída!"));
+        }
+        story.scenes.add(new Scene("night",variety==1?"dance":"talk",endings[variety]));
+        return story;
+    }
 
-        String bg = lower.contains("espaço") || lower.contains("lua") ? "space" :
-                lower.contains("praia") || lower.contains("mar") ? "beach" :
-                lower.contains("floresta") || lower.contains("natureza") ? "forest" :
-                lower.contains("noite") ? "night" : "city";
-        StoryPlan result = new StoryPlan(seconds, "Sua aventura animada", false);
-        result.scenes.add(new Scene(bg, "idle", limit("Era uma vez... " + input, 100)));
-        result.scenes.add(new Scene(bg, action, "De repente, tudo começou a mudar!"));
-        result.scenes.add(new Scene("sunset", "chase", "A história ficou ainda mais emocionante..."));
-        result.scenes.add(new Scene("night", "dance", "Continua no próximo episódio?"));
-        return result;
+    private static boolean contains(String text,String... keys){
+        for(String key:keys)if(text.contains(key))return true;
+        return false;
     }
 }
