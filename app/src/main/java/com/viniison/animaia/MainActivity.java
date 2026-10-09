@@ -21,8 +21,8 @@ public final class MainActivity extends Activity {
     private SpriteStore sprites;
     private PreviewCanvas preview;
     private StoryPlan story;
-    private EditText prompt,geminiKey,googleKey,googleCx;
-    private Button generate,export,importSprite,searchSprite,share;
+    private EditText prompt;
+    private Button generate,editScenes,export,importSprite,searchSprite,share;
     private final Button[] slots=new Button[3];
     private TextView status;
     private boolean portrait=false,busy=false;
@@ -49,7 +49,7 @@ public final class MainActivity extends Activity {
         scroll.addView(root);
         setContentView(scroll);
         UiKit.add(root,UiKit.label(this,"✦ AnimaIA",30,true),0);
-        UiKit.add(root,UiKit.muted(this,"Estúdio de histórias animadas • Pixel art 2D",13),4);
+        UiKit.add(root,UiKit.muted(this,"Estúdio pixel art 2D • v0.2 • sem chaves",13),4);
         UiKit.add(root,UiKit.label(this,"PRÉVIA AO VIVO",12,true),24);
         preview=new PreviewCanvas(this,sprites);
         preview.setStory(story);
@@ -67,8 +67,7 @@ public final class MainActivity extends Activity {
         tall.setOnClickListener(v -> chooseRatio(true,wide,tall));
 
         UiKit.add(root,UiKit.label(this,"1. Sua ideia",19,true),23);
-        UiKit.add(root,UiKit.muted(this,"Descreva personagens, cenário e o que acontece. "
-                +"Com uma chave Gemini, a IA cria as cenas; sem chave, você testa o modo de demonstração.",12),7);
+        UiKit.add(root,UiKit.muted(this,"Crie um roteiro animado localmente, sem API. Depois edite cada cena: ações, cenários e legendas.",12),7);
         prompt=UiKit.input(this,"Ex.: Um herói encontra uma arara mágica na floresta e aprende a voar...");
         prompt.setSingleLine(false);prompt.setMinLines(3);
         prompt.setGravity(Gravity.TOP|Gravity.START);
@@ -92,9 +91,15 @@ public final class MainActivity extends Activity {
             });
         }
         UiKit.add(root,durationRow,10);
-        generate=UiKit.button(this,"✨ Criar roteiro e animação",true);
+        generate=UiKit.button(this,"✨ Montar animação (sem API)",true);
         UiKit.add(root,generate,14);
         generate.setOnClickListener(v -> generateStory());
+        editScenes=UiKit.button(this,"🎞 Editar cenas, movimentos e legendas",false);
+        UiKit.add(root,editScenes,8);
+        editScenes.setOnClickListener(v -> { if(!busy) SceneEditor.show(this,story,() -> {
+            preview.setStory(story);
+            status.setText("Cenas atualizadas! Veja a prévia e exporte.");
+        }); });
 
         UiKit.add(root,UiKit.label(this,"2. Personagens e sprites",19,true),24);
         UiKit.add(root,UiKit.muted(this,"Troque os personagens de teste por PNGs transparentes. "
@@ -109,7 +114,7 @@ public final class MainActivity extends Activity {
         UiKit.add(root,slotRow,12);
         LinearLayout spriteActions=UiKit.horizontal(this);
         importSprite=UiKit.button(this,"🖼 Importar PNG",false);
-        searchSprite=UiKit.button(this,"🔎 Google Imagens",false);
+        searchSprite=UiKit.button(this,"🔎 Buscar sprites grátis",false);
         UiKit.addWeighted(spriteActions,importSprite,1,0);
         UiKit.addWeighted(spriteActions,searchSprite,1,8);
         UiKit.add(root,spriteActions,10);
@@ -128,7 +133,7 @@ public final class MainActivity extends Activity {
 
         UiKit.add(root,UiKit.label(this,"3. Exportar seu vídeo",19,true),24);
         UiKit.add(root,UiKit.muted(this,"Vídeo MP4 H.264 • 768×432 ou 432×768 • 18 fps. "
-            +"A v0.1 exporta sem áudio. O arquivo aparece na pasta Filmes/AnimaIA.",12),6);
+            +"A v0.2 exporta sem áudio. O arquivo aparece na pasta Filmes/AnimaIA.",12),6);
         export=UiKit.button(this,"🎬 Renderizar MP4",true);
         UiKit.add(root,export,12);
         export.setOnClickListener(v -> exportVideo());
@@ -141,42 +146,7 @@ public final class MainActivity extends Activity {
         status.setTextColor(UiKit.CYAN);
         UiKit.add(root,status,17);
 
-        Button settings=UiKit.button(this,"⚙ Configurar IA e busca Google",false);
-        UiKit.add(root,settings,22);
-        LinearLayout panel=settingsPanel();
-        panel.setVisibility(View.GONE);
-        UiKit.add(root,panel,8);
-        settings.setOnClickListener(v -> panel.setVisibility(
-                panel.getVisibility()==View.VISIBLE?View.GONE:View.VISIBLE));
-    }
 
-    private LinearLayout settingsPanel() {
-        LinearLayout panel=UiKit.vertical(this);
-        panel.setPadding(UiKit.dp(this,13),UiKit.dp(this,10),
-                         UiKit.dp(this,13),UiKit.dp(this,12));
-        panel.setBackground(UiKit.shape(UiKit.CARD,14,this));
-        UiKit.add(panel,UiKit.muted(this,"As chaves são suas. Não as coloque no repositório público; "
-                +"elas ficam nas preferências deste aparelho.",12),0);
-        geminiKey=UiKit.input(this,"Chave Gemini API");
-        geminiKey.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        geminiKey.setText(prefs.getString("gemini_key",""));
-        UiKit.add(panel,geminiKey,10);
-        googleKey=UiKit.input(this,"Google Custom Search API key");
-        googleKey.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        googleKey.setText(prefs.getString("google_key",""));
-        UiKit.add(panel,googleKey,9);
-        googleCx=UiKit.input(this,"Google Programmable Search Engine ID (cx)");
-        googleCx.setText(prefs.getString("google_cx",""));
-        UiKit.add(panel,googleCx,9);
-        Button save=UiKit.button(this,"Salvar configurações",true);
-        UiKit.add(panel,save,10);
-        save.setOnClickListener(v -> {
-            prefs.edit().putString("gemini_key",geminiKey.getText().toString().trim())
-                .putString("google_key",googleKey.getText().toString().trim())
-                .putString("google_cx",googleCx.getText().toString().trim()).apply();
-            status.setText("Configurações salvas neste celular.");
-        });
-        return panel;
     }
 
     private void chooseRatio(boolean mode,Button wide,Button tall) {
@@ -220,32 +190,13 @@ public final class MainActivity extends Activity {
 
     private void generateStory() {
         if(busy)return;
-        final String idea=prompt.getText().toString().trim();
+        String idea=prompt.getText().toString().trim();
         if(idea.isEmpty()){status.setText("Escreva sua ideia primeiro.");return;}
         prefs.edit().putString("last_prompt",idea).apply();
-        String key=prefs.getString("gemini_key","");
-        int secs=seconds;
-        setBusy(true);
-        status.setText(key.isEmpty()?"Criando animação demonstrativa..."
-            :"A IA está escrevendo e organizando as cenas...");
-        new Thread(() -> {
-            try {
-                StoryPlan result=key.isEmpty()?StoryPlan.offline(idea,secs)
-                    :AiPlanner.generate(key,idea,secs);
-                runOnUiThread(() -> {
-                    story=result;
-                    preview.setStory(story);
-                    setBusy(false);
-                    status.setText((result.generatedByAi?"Roteiro Gemini":"Demonstração local")
-                        +" pronto! "+result.scenes.size()+" cenas, "+secs+" s.");
-                });
-            }catch(Exception e){
-                runOnUiThread(() -> {
-                    setBusy(false);
-                    status.setText("Não foi possível gerar: "+e.getMessage());
-                });
-            }
-        }).start();
+        story=StoryPlan.offline(idea,seconds);
+        preview.setStory(story);
+        status.setText("Roteiro local pronto: "+story.scenes.size()
+            +" cenas, "+seconds+" s. Toque em Editar cenas para personalizar!");
     }
 
     private void exportVideo() {
@@ -292,5 +243,6 @@ public final class MainActivity extends Activity {
         export.setEnabled(!busy);
         importSprite.setEnabled(!busy);
         searchSprite.setEnabled(!busy);
+        editScenes.setEnabled(!busy);
     }
 }
